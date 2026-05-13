@@ -184,27 +184,29 @@ def execute_check_in(client, account_name: str, provider_config, headers: dict):
 			result = response.json()
 			if result.get('ret') == 1 or result.get('code') == 0 or result.get('success'):
 				print(f'[SUCCESS] {account_name}: Check-in successful!')
-				return True
+				return True, None
 			else:
 				error_msg = result.get('msg', result.get('message', 'Unknown error'))
 				# 检查是否是"已经签到过"的情况，这种情况也算成功
 				already_checked_keywords = ['已经签到', '已签到', '重复签到', 'already checked', 'already signed']
 				if any(keyword in error_msg.lower() for keyword in already_checked_keywords):
 					print(f'[SUCCESS] {account_name}: Already checked in today')
-					return True
+					return True, error_msg
 				print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
-				return False
+				return False, error_msg
 		except json.JSONDecodeError:
 			# 如果不是 JSON 响应，检查是否包含成功标识
 			if 'success' in response.text.lower():
 				print(f'[SUCCESS] {account_name}: Check-in successful!')
-				return True
+				return True, None
 			else:
-				print(f'[FAILED] {account_name}: Check-in failed - Invalid response format')
-				return False
+				error_msg = f'签到接口返回非 JSON: {response.text[:80]}'
+				print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
+				return False, error_msg
 	else:
-		print(f'[FAILED] {account_name}: Check-in failed - HTTP {response.status_code}')
-		return False
+		error_msg = f'签到接口 HTTP {response.status_code}: {response.text[:80]}'
+		print(f'[FAILED] {account_name}: Check-in failed - {error_msg}')
+		return False, error_msg
 
 
 def format_check_in_notification(detail: dict) -> str:
@@ -224,23 +226,24 @@ def format_check_in_notification(detail: dict) -> str:
 async def check_in_account(account: AccountConfig, account_index: int, app_config: AppConfig):
 	"""为单个账号执行签到操作"""
 	account_name = account.get_display_name(account_index)
+	check_in_error = None
 	print(f'\n[PROCESSING] Starting to process {account_name}')
 
 	provider_config = app_config.get_provider(account.provider)
 	if not provider_config:
 		print(f'[FAILED] {account_name}: Provider "{account.provider}" not found in configuration')
-		return False, None, None
+		return False, None, None, f'Provider "{account.provider}" not found in configuration'
 
 	print(f'[INFO] {account_name}: Using provider "{account.provider}" ({provider_config.domain})')
 
 	user_cookies = parse_cookies(account.cookies)
 	if not user_cookies:
 		print(f'[FAILED] {account_name}: Invalid configuration format')
-		return False, None, None
+		return False, None, None, 'Invalid configuration format'
 
 	all_cookies = await prepare_cookies(account_name, provider_config, user_cookies)
 	if not all_cookies:
-		return False, None, None
+		return False, None, None, 'Unable to get required cookies'
 
 	client = httpx.Client(http2=True, timeout=30.0)
 
@@ -269,19 +272,19 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 			print(user_info_before.get('error', 'Unknown error'))
 
 		if provider_config.needs_manual_check_in():
-			success = execute_check_in(client, account_name, provider_config, headers)
+			success, check_in_error = execute_check_in(client, account_name, provider_config, headers)
 			# 签到后再次获取用户信息，用于计算签到收益
 			user_info_after = get_user_info(client, headers, user_info_url)
-			return success, user_info_before, user_info_after
+			return success, user_info_before, user_info_after, check_in_error
 		else:
 			print(f'[INFO] {account_name}: Check-in completed automatically (triggered by user info request)')
 			# 自动签到的情况，再次获取用户信息
 			user_info_after = get_user_info(client, headers, user_info_url)
-			return True, user_info_before, user_info_after
+			return True, user_info_before, user_info_after, None
 
 	except Exception as e:
 		print(f'[FAILED] {account_name}: Error occurred during check-in process - {str(e)[:50]}...')
-		return False, None, None
+		return False, None, None, str(e)[:80]
 	finally:
 		client.close()
 
@@ -314,7 +317,7 @@ async def main():
 	for i, account in enumerate(accounts):
 		account_key = f'account_{i + 1}'
 		try:
-			success, user_info_before, user_info_after = await check_in_account(account, i, app_config)
+			success, user_info_before, user_info_after, check_in_error = await check_in_account(account, i, app_config)
 			if success:
 				success_count += 1
 
@@ -376,8 +379,12 @@ async def main():
 				)
 				if user_info_after and user_info_after.get('success'):
 					account_result += f'\n💰 余额：${user_info_after["quota"]:.2f}\n🎁 签到增加：$0.00'
+					if check_in_error:
+						account_result += f'\n⚠️ 原因：{check_in_error}'
 				elif user_info_after:
 					account_result += f'\n⚠️ 原因：{user_info_after.get("error", "未知错误")}'
+				elif check_in_error:
+					account_result += f'\n⚠️ 原因：{check_in_error}'
 				notification_content.append(account_result)
 
 		except Exception as e:
