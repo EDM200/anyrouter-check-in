@@ -19,6 +19,7 @@ class ProviderConfig:
 	sign_in_path: str | None = '/api/user/sign_in'
 	user_info_path: str = '/api/user/self'
 	api_user_key: str = 'new-api-user'
+	referer_path: str = ''
 	bypass_method: Literal['waf_cookies'] | None = None
 	waf_cookie_names: List[str] | None = None
 
@@ -53,6 +54,7 @@ class ProviderConfig:
 			sign_in_path=data.get('sign_in_path', '/api/user/sign_in'),
 			user_info_path=data.get('user_info_path', '/api/user/self'),
 			api_user_key=data.get('api_user_key', 'new-api-user'),
+			referer_path=data.get('referer_path', ''),
 			bypass_method=data.get('bypass_method'),
 			waf_cookie_names=data.get('waf_cookie_names'),
 		)
@@ -83,6 +85,7 @@ class AppConfig:
 				sign_in_path='/api/user/sign_in',
 				user_info_path='/api/user/self',
 				api_user_key='new-api-user',
+				referer_path='',
 				bypass_method='waf_cookies',
 				waf_cookie_names=['acw_tc', 'cdn_sec_tc', 'acw_sc__v2'],
 			),
@@ -93,6 +96,7 @@ class AppConfig:
 				sign_in_path=None,  # 无需签到接口，查询用户信息时自动完成签到
 				user_info_path='/api/user/self',
 				api_user_key='new-api-user',
+				referer_path='',
 				bypass_method='waf_cookies',
 				waf_cookie_names=['acw_tc'],
 			),

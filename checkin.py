@@ -255,7 +255,7 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 			'Accept': 'application/json, text/plain, */*',
 			'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 			'Accept-Encoding': 'gzip, deflate, br, zstd',
-			'Referer': provider_config.domain,
+			'Referer': f'{provider_config.domain}{provider_config.referer_path}',
 			'Origin': provider_config.domain,
 			'Connection': 'keep-alive',
 			'Sec-Fetch-Dest': 'empty',
